@@ -432,6 +432,7 @@ app.get('/admin', requireAuth('admin'), async (req, res) => {
       const canView = character.filled && character.status !== 'deleted';
       const canToggle = character.filled && character.status !== 'deleted';
       const canDelete = character.status !== 'deleted' && character.status !== 'active';
+      const canRestore = character.status === 'deleted';
       const actions = `
         <div class="actions">
           ${canView ? `<a class="link-button" href="/admin/characters/${character.id}">Открыть карточку</a>` : ''}
@@ -440,6 +441,9 @@ app.get('/admin', requireAuth('admin'), async (req, res) => {
             </form>` : ''}
           ${canDelete ? `<form method="post" action="/admin/characters/${character.id}/delete" data-confirm="Удалить персонажа? Он будет перемещён в удалённые.">
               <button type="submit">Удалить</button>
+            </form>` : ''}
+          ${canRestore ? `<form method="post" action="/admin/characters/${character.id}/restore" data-confirm="Вернуть персонажа в состояние «Не активен»?">
+              <button type="submit">Восстановить</button>
             </form>` : ''}
         </div>
       `;
@@ -573,6 +577,20 @@ app.post('/admin/characters/:id/delete', requireAuth('admin'), async (req, res) 
   character.status = 'deleted';
   await saveCharacters(characters);
   res.redirect('/admin?filter=deleted');
+});
+
+app.post('/admin/characters/:id/restore', requireAuth('admin'), async (req, res) => {
+  const characters = await getCharacters();
+  const character = characters.find((item) => item.id === req.params.id);
+
+  if (!character || character.status !== 'deleted') {
+    res.redirect('/admin');
+    return;
+  }
+
+  character.status = character.filled ? 'inactive' : 'locked';
+  await saveCharacters(characters);
+  res.redirect('/admin?filter=inactive');
 });
 
 app.post('/admin/characters/purge-deleted', requireAuth('admin'), async (req, res) => {
