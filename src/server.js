@@ -2,10 +2,12 @@ const express = require('express');
 const session = require('express-session');
 const path = require('path');
 const fs = require('fs').promises;
+const os = require('os');
 const { nanoid } = require('nanoid');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const HOST = '0.0.0.0';
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const CHARACTERS_FILE = path.join(DATA_DIR, 'characters.json');
@@ -551,7 +553,18 @@ app.post('/player/setup', requireAuth('player'), async (req, res) => {
 });
 
 ensureDataFiles().then(() => {
-  app.listen(PORT, () => {
+  app.listen(PORT, HOST, () => {
+    const lanIps = Object.values(os.networkInterfaces())
+      .flat()
+      .filter((details) => details && details.family === 'IPv4' && !details.internal)
+      .map((details) => details.address);
+    const primaryIp = lanIps[0] || 'не найден';
     console.log(`Server is running on http://localhost:${PORT}`);
+    if (primaryIp !== 'не найден') {
+      console.log(`LAN IP: ${primaryIp}`);
+      console.log(`Откройте на телефоне: http://${primaryIp}:${PORT}/`);
+    } else {
+      console.log('LAN IP не найден. Проверьте подключение к сети.');
+    }
   });
 });
