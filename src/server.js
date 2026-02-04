@@ -68,11 +68,25 @@ async function saveUsers(users) {
 
 async function getCharacters() {
   const data = await readJson(CHARACTERS_FILE);
-  return data.characters;
+  return data.characters.map((character) => normalizeCharacter(character));
 }
 
 async function saveCharacters(characters) {
-  await writeJson(CHARACTERS_FILE, { characters });
+  await writeJson(CHARACTERS_FILE, {
+    characters: characters.map((character) => normalizeCharacter(character)),
+  });
+}
+
+function normalizeCharacter(character) {
+  const normalized = { ...character };
+  const validStatuses = ['locked', 'inactive', 'active', 'deleted'];
+  if (!validStatuses.includes(normalized.status)) {
+    normalized.status = normalized.filled ? 'inactive' : 'locked';
+  }
+  if (normalized.status !== 'locked' && !normalized.filled) {
+    normalized.status = 'locked';
+  }
+  return normalized;
 }
 
 function escapeHtml(value) {
@@ -284,20 +298,47 @@ app.get('/logout', (req, res) => {
 
 app.get('/admin', requireAuth('admin'), async (req, res) => {
   const characters = await getCharacters();
-  const list = characters
+  const filter = req.query.filter || 'all';
+  const filteredCharacters = characters.filter((character) => {
+    if (filter === 'deleted') {
+      return character.status === 'deleted';
+    }
+    if (filter === 'active') {
+      return character.status === 'active';
+    }
+    if (filter === 'inactive') {
+      return character.status === 'inactive';
+    }
+    return character.status !== 'deleted';
+  });
+
+  const list = filteredCharacters
     .map((character) => {
-      const status = character.filled
-        ? `Заполнено: ${escapeHtml(character.data.name)}`
-        : 'Заблокировано / пусто';
-      const actions = character.filled
-        ? `<div class="actions">
-            <a class="link-button" href="/admin/characters/${character.id}">Открыть карточку</a>
-          </div>`
-        : '';
+      const statusLabels = {
+        locked: 'Заблокировано / пусто',
+        inactive: 'Не активен',
+        active: 'В игре',
+        deleted: 'Удалён',
+      };
+      const statusText = statusLabels[character.status] || 'Неизвестно';
+      const canView = character.filled && character.status !== 'deleted';
+      const canToggle = character.filled && character.status !== 'deleted';
+      const canDelete = character.status !== 'deleted' && character.status !== 'active';
+      const actions = `
+        <div class="actions">
+          ${canView ? `<a class="link-button" href="/admin/characters/${character.id}">Открыть карточку</a>` : ''}
+          ${canToggle ? `<form method="post" action="/admin/characters/${character.id}/toggle-active">
+              <button type="submit">${character.status === 'active' ? 'Сделать неактивным' : 'Сделать активным'}</button>
+            </form>` : ''}
+          ${canDelete ? `<form method="post" action="/admin/characters/${character.id}/delete" onsubmit="return confirm('Удалить персонажа? Он будет перемещён в удалённые.');">
+              <button type="submit">Удалить</button>
+            </form>` : ''}
+        </div>
+      `;
       return `
         <div class="list-item">
           <strong>${escapeHtml(character.username)}</strong>
-          <div class="muted">${status}</div>
+          <div class="muted">${statusText}</div>
           ${actions}
         </div>
       `;
@@ -325,9 +366,22 @@ app.get('/admin', requireAuth('admin'), async (req, res) => {
     </form>
 
     <h2>Ячейки персонажей</h2>
+    <div class="actions">
+      <a class="link-button" href="/admin?filter=all">Все</a>
+      <a class="link-button" href="/admin?filter=active">В игре</a>
+      <a class="link-button" href="/admin?filter=inactive">Не активные</a>
+      <a class="link-button" href="/admin?filter=deleted">Удалённые</a>
+    </div>
     <div class="list">
       ${list || '<p class="muted">Пока нет созданных персонажей.</p>'}
     </div>
+    ${
+      filter === 'deleted'
+        ? `<form method="post" action="/admin/characters/purge-deleted" onsubmit="return confirm('Удалить навсегда всех удалённых персонажей?');">
+            <button type="submit">Удалить навсегда всех удалённых</button>
+          </form>`
+        : ''
+    }
   `;
 
   res.send(layout('Админ-панель', content));
@@ -362,6 +416,7 @@ app.post('/admin/create-player', requireAuth('admin'), async (req, res) => {
     username,
     filled: false,
     data: null,
+    status: 'locked',
   };
 
   users.push(newUser);
@@ -370,6 +425,62 @@ app.post('/admin/create-player', requireAuth('admin'), async (req, res) => {
   await saveUsers(users);
   await saveCharacters(characters);
 
+  res.redirect('/admin');
+});
+
+app.post('/admin/characters/:id/toggle-active', requireAuth('admin'), async (req, res) => {
+  const characters = await getCharacters();
+  const character = characters.find((item) => item.id === req.params.id);
+
+  if (!character || !character.filled || character.status === 'deleted') {
+    res.redirect('/admin');
+    return;
+  }
+
+  character.status = character.status === 'active' ? 'inactive' : 'active';
+  await saveCharacters(characters);
+  res.redirect('/admin');
+});
+
+app.post('/admin/characters/:id/delete', requireAuth('admin'), async (req, res) => {
+  const characters = await getCharacters();
+  const character = characters.find((item) => item.id === req.params.id);
+
+  if (!character || character.status === 'deleted') {
+    res.redirect('/admin');
+    return;
+  }
+
+  if (character.status === 'active') {
+    const content = `
+      <h1>Удаление невозможно</h1>
+      <p class="muted">Нельзя удалить активного персонажа. Сначала сделайте его неактивным.</p>
+      <a class="link-button" href="/admin">Назад</a>
+    `;
+    res.status(400).send(layout('Ошибка удаления', content));
+    return;
+  }
+
+  character.status = 'deleted';
+  await saveCharacters(characters);
+  res.redirect('/admin?filter=deleted');
+});
+
+app.post('/admin/characters/purge-deleted', requireAuth('admin'), async (req, res) => {
+  const characters = await getCharacters();
+  const users = await getUsers();
+  const deletedIds = new Set(
+    characters.filter((item) => item.status === 'deleted').map((item) => item.id)
+  );
+  const remainingCharacters = characters.filter(
+    (item) => item.status !== 'deleted'
+  );
+  const remainingUsers = users.filter(
+    (user) => user.role === 'admin' || !deletedIds.has(user.characterId)
+  );
+
+  await saveCharacters(remainingCharacters);
+  await saveUsers(remainingUsers);
   res.redirect('/admin');
 });
 
@@ -392,6 +503,9 @@ app.get('/admin/characters/:id', requireAuth('admin'), async (req, res) => {
     ${renderCharacterCard(character)}
     <div class="actions">
       <a class="link-button" href="/admin">Вернуться к списку</a>
+      <form method="post" action="/admin/characters/${character.id}/toggle-active">
+        <button type="submit">${character.status === 'active' ? 'Сделать неактивным' : 'Сделать активным'}</button>
+      </form>
       <a class="link-button" href="/logout">Выйти</a>
     </div>
   `;
@@ -424,6 +538,9 @@ app.get('/player', requireAuth('player'), async (req, res) => {
     <h1>Карточка персонажа</h1>
     ${renderCharacterCard(character)}
     <div class="actions">
+      <form method="post" action="/player/toggle-active">
+        <button type="submit">${character.status === 'active' ? 'Сделать неактивным' : 'Войти в игру'}</button>
+      </form>
       <a class="link-button" href="/logout">Выйти</a>
     </div>
   `;
@@ -531,6 +648,7 @@ app.post('/player/setup', requireAuth('player'), async (req, res) => {
     : [];
 
   character.filled = true;
+  character.status = 'inactive';
   character.data = {
     name: req.body.name,
     race: req.body.race,
@@ -549,6 +667,22 @@ app.post('/player/setup', requireAuth('player'), async (req, res) => {
 
   await saveCharacters(characters);
 
+  res.redirect('/player');
+});
+
+app.post('/player/toggle-active', requireAuth('player'), async (req, res) => {
+  const characters = await getCharacters();
+  const character = characters.find(
+    (item) => item.id === req.session.characterId
+  );
+
+  if (!character || !character.filled || character.status === 'deleted') {
+    res.redirect('/player');
+    return;
+  }
+
+  character.status = character.status === 'active' ? 'inactive' : 'active';
+  await saveCharacters(characters);
   res.redirect('/player');
 });
 
