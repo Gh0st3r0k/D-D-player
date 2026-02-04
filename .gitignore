@@ -1,2 +1,6 @@
 node_modules
 .env
+<<<<<<< codex/-dd-2ew79u
+data/portraits/*.png
+=======
+>>>>>>> main
