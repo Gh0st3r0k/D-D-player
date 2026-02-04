@@ -11,8 +11,10 @@ const HOST = '0.0.0.0';
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const CHARACTERS_FILE = path.join(DATA_DIR, 'characters.json');
+const PORTRAITS_DIR = path.join(DATA_DIR, 'portraits');
 
 app.use(express.urlencoded({ extended: false }));
+app.use('/portraits', express.static(PORTRAITS_DIR));
 app.use(
   session({
     secret: process.env.SESSION_SECRET || 'local-session-secret',
@@ -23,6 +25,7 @@ app.use(
 
 async function ensureDataFiles() {
   await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.mkdir(PORTRAITS_DIR, { recursive: true });
   try {
     await fs.access(USERS_FILE);
   } catch (error) {
@@ -207,6 +210,18 @@ function layout(title, body) {
     .status-pill.deleted {
       background: #dc2626;
     }
+    .portrait-wrapper {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    .portrait {
+      width: 100%;
+      max-width: 320px;
+      border-radius: 12px;
+      cursor: pointer;
+      object-fit: cover;
+    }
     .modal-backdrop {
       position: fixed;
       inset: 0;
@@ -241,6 +256,21 @@ function layout(title, body) {
       background: #e5e7eb;
       color: #1f1f1f;
     }
+    .image-modal {
+      background: transparent;
+      box-shadow: none;
+      padding: 0;
+      max-width: 90vw;
+      max-height: 90vh;
+    }
+    .image-modal img {
+      max-width: 90vw;
+      max-height: 90vh;
+      width: auto;
+      height: auto;
+      border-radius: 12px;
+      object-fit: contain;
+    }
   </style>
 </head>
 <body>
@@ -257,6 +287,11 @@ function layout(title, body) {
       </div>
     </div>
   </div>
+  <div class="modal-backdrop" id="imageModal" aria-hidden="true">
+    <div class="modal image-modal" role="dialog" aria-modal="true">
+      <img id="imageModalContent" alt="Портрет персонажа" />
+    </div>
+  </div>
   <script>
     const modal = document.getElementById('confirmModal');
     const title = document.getElementById('confirmTitle');
@@ -264,6 +299,8 @@ function layout(title, body) {
     const cancelButton = document.getElementById('confirmCancel');
     const okButton = document.getElementById('confirmOk');
     let pendingForm = null;
+    const imageModal = document.getElementById('imageModal');
+    const imageModalContent = document.getElementById('imageModalContent');
 
     function openModal(form, text) {
       pendingForm = form;
@@ -278,6 +315,20 @@ function layout(title, body) {
       modal.style.display = 'none';
       modal.setAttribute('aria-hidden', 'true');
       pendingForm = null;
+    }
+
+    function openImageModal(src) {
+      imageModalContent.src = src;
+      imageModal.style.display = 'flex';
+      imageModal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeImageModal() {
+      imageModal.style.display = 'none';
+      imageModal.setAttribute('aria-hidden', 'true');
+      imageModalContent.src = '';
+      document.body.style.overflow = '';
     }
 
     document.querySelectorAll('form[data-confirm]').forEach((form) => {
@@ -298,6 +349,22 @@ function layout(title, body) {
         pendingForm.submit();
       }
       closeModal();
+    });
+
+    document.querySelectorAll('[data-portrait]').forEach((image) => {
+      image.addEventListener('click', () => {
+        openImageModal(image.src);
+      });
+    });
+    imageModal.addEventListener('click', (event) => {
+      if (event.target === imageModal) {
+        closeImageModal();
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        closeImageModal();
+      }
     });
   </script>
 </body>
@@ -326,9 +393,19 @@ function renderCharacterCard(character) {
   const magicInfo = data.magic?.canUse
     ? `Да (${data.magic.focuses.join(', ') || 'сфера не указана'})`
     : 'Нет';
+  const portraitSrc = `/portraits/${character.id}.png`;
 
   return `
     <div class="card">
+      <div class="portrait-wrapper">
+        <img
+          src="${portraitSrc}"
+          alt="Портрет персонажа ${escapeHtml(data.name)}"
+          class="portrait"
+          data-portrait
+          onerror="this.onerror=null;this.src='/portraits/default.png';"
+        />
+      </div>
       <h2>${escapeHtml(data.name)}</h2>
       <p><strong>Раса:</strong> ${escapeHtml(data.race)}</p>
       <p><strong>Класс:</strong> ${escapeHtml(data.class)}</p>
