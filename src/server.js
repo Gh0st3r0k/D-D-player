@@ -186,12 +186,120 @@ function layout(title, body) {
       border-radius: 8px;
       font-size: 14px;
     }
+    .status-pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      margin-left: 8px;
+    }
+    .status-pill.locked {
+      background: #1f1f1f;
+    }
+    .status-pill.inactive {
+      background: #6b7280;
+    }
+    .status-pill.active {
+      background: #16a34a;
+    }
+    .status-pill.deleted {
+      background: #dc2626;
+    }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 10;
+    }
+    .modal {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      max-width: 420px;
+      width: 100%;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+    }
+    .modal h3 {
+      margin-top: 0;
+    }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .modal-actions button {
+      background: #2f5cf7;
+    }
+    .modal-actions .secondary {
+      background: #e5e7eb;
+      color: #1f1f1f;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     ${body}
   </div>
+  <div class="modal-backdrop" id="confirmModal" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h3 id="confirmTitle">Подтверждение</h3>
+      <p id="confirmMessage">Вы уверены, что хотите выполнить это действие?</p>
+      <div class="modal-actions">
+        <button class="secondary" type="button" id="confirmCancel">Отмена</button>
+        <button type="button" id="confirmOk">Подтвердить</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    const modal = document.getElementById('confirmModal');
+    const title = document.getElementById('confirmTitle');
+    const message = document.getElementById('confirmMessage');
+    const cancelButton = document.getElementById('confirmCancel');
+    const okButton = document.getElementById('confirmOk');
+    let pendingForm = null;
+
+    function openModal(form, text) {
+      pendingForm = form;
+      if (text) {
+        message.textContent = text;
+      }
+      modal.style.display = 'flex';
+      modal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeModal() {
+      modal.style.display = 'none';
+      modal.setAttribute('aria-hidden', 'true');
+      pendingForm = null;
+    }
+
+    document.querySelectorAll('form[data-confirm]').forEach((form) => {
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        openModal(form, form.dataset.confirm);
+      });
+    });
+
+    cancelButton.addEventListener('click', closeModal);
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal) {
+        closeModal();
+      }
+    });
+    okButton.addEventListener('click', () => {
+      if (pendingForm) {
+        pendingForm.submit();
+      }
+      closeModal();
+    });
+  </script>
 </body>
 </html>`;
 }
@@ -330,7 +438,7 @@ app.get('/admin', requireAuth('admin'), async (req, res) => {
           ${canToggle ? `<form method="post" action="/admin/characters/${character.id}/toggle-active">
               <button type="submit">${character.status === 'active' ? 'Сделать неактивным' : 'Сделать активным'}</button>
             </form>` : ''}
-          ${canDelete ? `<form method="post" action="/admin/characters/${character.id}/delete" onsubmit="return confirm('Удалить персонажа? Он будет перемещён в удалённые.');">
+          ${canDelete ? `<form method="post" action="/admin/characters/${character.id}/delete" data-confirm="Удалить персонажа? Он будет перемещён в удалённые.">
               <button type="submit">Удалить</button>
             </form>` : ''}
         </div>
@@ -338,7 +446,8 @@ app.get('/admin', requireAuth('admin'), async (req, res) => {
       return `
         <div class="list-item">
           <strong>${escapeHtml(character.username)}</strong>
-          <div class="muted">${statusText}</div>
+          <span class="status-pill ${character.status}">${statusText}</span>
+          <div class="muted">${character.filled ? `Заполнено: ${escapeHtml(character.data.name)}` : 'Карточка не заполнена'}</div>
           ${actions}
         </div>
       `;
@@ -377,7 +486,7 @@ app.get('/admin', requireAuth('admin'), async (req, res) => {
     </div>
     ${
       filter === 'deleted'
-        ? `<form method="post" action="/admin/characters/purge-deleted" onsubmit="return confirm('Удалить навсегда всех удалённых персонажей?');">
+        ? `<form method="post" action="/admin/characters/purge-deleted" data-confirm="Удалить навсегда всех удалённых персонажей?">
             <button type="submit">Удалить навсегда всех удалённых</button>
           </form>`
         : ''
