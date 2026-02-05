@@ -14,6 +14,7 @@ const CHARACTERS_FILE = path.join(DATA_DIR, 'characters.json');
 const PORTRAITS_DIR = path.join(DATA_DIR, 'portraits');
 
 app.use(express.urlencoded({ extended: false }));
+app.use(express.json());
 app.use('/portraits', express.static(PORTRAITS_DIR));
 app.use(
   session({
@@ -89,7 +90,46 @@ function normalizeCharacter(character) {
   if (normalized.status !== 'locked' && !normalized.filled) {
     normalized.status = 'locked';
   }
+  normalized.game = ensureGameData(normalized);
   return normalized;
+}
+
+function ensureGameData(character) {
+  const canUseMagic = character?.data?.magic?.canUse;
+  const weaponName = character?.data?.weapon || 'Стандартное оружие';
+  return {
+    level: character?.game?.level ?? 1,
+    hp: {
+      current: character?.game?.hp?.current ?? 100,
+      max: character?.game?.hp?.max ?? 100,
+    },
+    mana: {
+      current: character?.game?.mana?.current ?? (canUseMagic ? 10 : 0),
+      max: character?.game?.mana?.max ?? (canUseMagic ? 10 : 0),
+    },
+    stats: {
+      strength: character?.game?.stats?.strength ?? 0,
+      endurance: character?.game?.stats?.endurance ?? 0,
+      agility: character?.game?.stats?.agility ?? 0,
+      intellect: character?.game?.stats?.intellect ?? 0,
+      wisdom: character?.game?.stats?.wisdom ?? 0,
+      charisma: character?.game?.stats?.charisma ?? 0,
+    },
+    weapons:
+      character?.game?.weapons?.length > 0
+        ? character.game.weapons
+        : [{ name: weaponName, damage: '1D4' }],
+    inventory: character?.game?.inventory ?? [],
+    money: {
+      gold: character?.game?.money?.gold ?? 0,
+      silver: character?.game?.money?.silver ?? 0,
+      copper: character?.game?.money?.copper ?? 0,
+    },
+    skills: character?.game?.skills ?? [],
+    magic: {
+      spells: character?.game?.magic?.spells ?? [],
+    },
+  };
 }
 
 function escapeHtml(value) {
@@ -508,9 +548,13 @@ function layout(title, body) {
         return;
       }
       const data = new FormData(editForm);
+      const type = data.get('type');
       const current = data.get('current');
       const max = data.get('max');
-      if (current !== null && max !== null) {
+      const value = data.get('value');
+      const key = data.get('key');
+      const index = data.get('index');
+      if (type === 'hp' || type === 'mana') {
         const currentVal = Number(current);
         const maxVal = Number(max);
         if (Number.isNaN(currentVal) || Number.isNaN(maxVal) || currentVal > maxVal) {
@@ -518,8 +562,59 @@ function layout(title, body) {
           return;
         }
         editTarget.textContent = currentVal + '/' + maxVal;
-      } else if (data.get('value') !== null) {
-        editTarget.textContent = data.get('value');
+        fetch('/player/game/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, current: currentVal, max: maxVal }),
+        });
+      } else if (type === 'weapon') {
+        const damage = data.get('damage');
+        const nameEl = document.querySelector('[data-weapon-name=\"' + index + '\"]');
+        const damageEl = document.querySelector('[data-weapon-damage=\"' + index + '\"]');
+        if (nameEl) {
+          nameEl.textContent = value;
+        }
+        if (damageEl) {
+          damageEl.textContent = damage;
+        }
+        fetch('/player/game/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, value, damage, index }),
+        });
+      } else if (type === 'inventory') {
+        const quantity = data.get('quantity');
+        const qtyEl = document.querySelector('[data-inventory-qty=\"' + index + '\"]');
+        if (qtyEl) {
+          qtyEl.textContent = quantity;
+        }
+        fetch('/player/game/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, value, quantity, index }),
+        });
+      } else if (type === 'spell') {
+        const cost = data.get('cost');
+        const nameEl = document.querySelector('[data-spell-name=\"' + index + '\"]');
+        const costEl = document.querySelector('[data-spell-cost=\"' + index + '\"]');
+        if (nameEl) {
+          nameEl.textContent = value;
+        }
+        if (costEl) {
+          costEl.textContent = cost;
+        }
+        fetch('/player/game/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, value, cost, index }),
+        });
+      } else if (type === 'money') {
+        editTarget.textContent = value;
+        fetch('/player/game/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, value, key }),
+        });
       }
       closeEditModal();
     });
@@ -581,6 +676,7 @@ function renderCharacterCard(character) {
 
 function renderGameScreen(character) {
   const name = character.data?.name || 'Персонаж';
+  const game = character.game;
   return `
     <div class="topbar">
       <a class="link-button back-button" href="/player">Назад</a>
@@ -590,34 +686,34 @@ function renderGameScreen(character) {
       <strong>Уровень:</strong>
       <div class="counter">
         <button type="button" class="edit-icon" data-adjust="level" data-dir="-1">-</button>
-        <span id="levelValue">1</span>
+        <span id="levelValue">${game.level}</span>
         <button type="button" class="edit-icon" data-adjust="level" data-dir="1">+</button>
       </div>
     </div>
     <div class="row-between" style="margin-top: 10px;">
       <strong>HP:</strong>
       <div class="counter">
-        <span id="hpValue">100/100</span>
+        <span id="hpValue">${game.hp.current}/${game.hp.max}</span>
         <button type="button" class="edit-icon" data-edit="hp">⚙️</button>
       </div>
     </div>
     <div class="stat-grid">
       ${[
-        'Сила',
-        'Выносливость',
-        'Ловкость',
-        'Интелект',
-        'Мудрость',
-        'Харизма',
+        { label: 'Сила', key: 'strength' },
+        { label: 'Выносливость', key: 'endurance' },
+        { label: 'Ловкость', key: 'agility' },
+        { label: 'Интелект', key: 'intellect' },
+        { label: 'Мудрость', key: 'wisdom' },
+        { label: 'Харизма', key: 'charisma' },
       ]
         .map(
-          (label) => `
+          (stat) => `
             <div class="stat-row">
-              <span>${label}:</span>
+              <span>${stat.label}:</span>
               <div class="counter">
-                <button type="button" class="edit-icon" data-adjust="${label}">-</button>
-                <span data-stat="${label}">0</span>
-                <button type="button" class="edit-icon" data-adjust="${label}" data-dir="1">+</button>
+                <button type="button" class="edit-icon" data-adjust="${stat.key}">-</button>
+                <span data-stat="${stat.key}">${game.stats[stat.key]}</span>
+                <button type="button" class="edit-icon" data-adjust="${stat.key}" data-dir="1">+</button>
               </div>
             </div>
           `
@@ -639,11 +735,21 @@ function renderGameScreen(character) {
             const el = document.getElementById('levelValue');
             const next = Math.max(1, Number(el.textContent) + dir);
             el.textContent = next;
+            fetch('/player/game/save', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'level', value: next }),
+            });
             return;
           }
           const stat = document.querySelector('[data-stat=\"' + key + '\"]');
           const next = Number(stat.textContent) + dir;
           stat.textContent = next;
+          fetch('/player/game/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'stat', key, value: next }),
+          });
         });
       });
       document.querySelectorAll('[data-edit=\"hp\"]').forEach((button) => {
@@ -651,8 +757,9 @@ function renderGameScreen(character) {
           const target = document.getElementById('hpValue');
           openEditModal(
             'Изменить HP',
-            '<label>Текущее HP<input name=\"current\" type=\"number\" value=\"100\" /></label>' +
-              '<label>Максимум HP<input name=\"max\" type=\"number\" value=\"100\" /></label>',
+            '<input type=\"hidden\" name=\"type\" value=\"hp\" />' +
+              '<label>Текущее HP<input name=\"current\" type=\"number\" value=\"${game.hp.current}\" /></label>' +
+              '<label>Максимум HP<input name=\"max\" type=\"number\" value=\"${game.hp.max}\" /></label>',
             target
           );
         });
@@ -663,26 +770,38 @@ function renderGameScreen(character) {
 
 function renderWeaponsScreen(character) {
   const name = character.data?.name || 'Персонаж';
+  const weapons = character.game.weapons;
   return `
     <div class="topbar">
       <a class="link-button back-button" href="/player/game">Назад</a>
       <h2>Оружие — ${escapeHtml(name)}</h2>
     </div>
     <div class="table-scroll">
-      <div class="table-row">
-        <div>Стандартное оружие</div>
-        <div>1D4</div>
-        <button type="button" class="edit-icon" data-edit="weapon">⚙️</button>
-      </div>
+      ${weapons
+        .map(
+          (weapon, index) => `
+            <div class="table-row">
+              <div data-weapon-name="${index}">${escapeHtml(weapon.name)}</div>
+              <div data-weapon-damage="${index}">${escapeHtml(weapon.damage)}</div>
+              <button type="button" class="edit-icon" data-edit="weapon" data-index="${index}">⚙️</button>
+            </div>
+          `
+        )
+        .join('')}
     </div>
     <script>
       document.querySelectorAll('[data-edit=\"weapon\"]').forEach((button) => {
         button.addEventListener('click', () => {
+          const index = button.dataset.index;
+          const nameEl = document.querySelector('[data-weapon-name=\"' + index + '\"]');
+          const damageEl = document.querySelector('[data-weapon-damage=\"' + index + '\"]');
           openEditModal(
             'Изменить оружие',
-            '<label>Название<input name=\"value\" type=\"text\" value=\"Стандартное оружие\" /></label>' +
-              '<label>Урон<input name=\"current\" type=\"text\" value=\"1D4\" /></label>',
-            button.closest('.table-row').children[0]
+            '<input type=\"hidden\" name=\"type\" value=\"weapon\" />' +
+              '<input type=\"hidden\" name=\"index\" value=\"' + index + '\" />' +
+              '<label>Название<input name=\"value\" type=\"text\" value=\"' + nameEl.textContent + '\" /></label>' +
+              '<label>Урон<input name=\"damage\" type=\"text\" value=\"' + damageEl.textContent + '\" /></label>',
+            nameEl
           );
         });
       });
@@ -692,29 +811,45 @@ function renderWeaponsScreen(character) {
 
 function renderInventoryScreen(character) {
   const name = character.data?.name || 'Персонаж';
+  const inventory = character.game.inventory;
   return `
     <div class="topbar">
       <a class="link-button back-button" href="/player/game">Назад</a>
       <h2>Инвентарь — ${escapeHtml(name)}</h2>
     </div>
     <div class="actions">
-      <span class="muted">Фильтры: Все | Оружие | Зелья | Прочее</span>
+      <span class="muted">Фильтры: Растения | Зелья | Броня | Оружие | Остальное</span>
     </div>
     <div class="table-scroll">
-      <div class="table-row">
-        <div>Факел<br /><span class="muted">Прочее</span></div>
-        <div>2</div>
-        <button type="button" class="edit-icon" data-edit="inventory">⚙️</button>
-      </div>
+      ${
+        inventory.length === 0
+          ? '<p class="muted">Инвентарь пока пуст.</p>'
+          : inventory
+              .map(
+                (item, index) => `
+                  <div class="table-row">
+                    <div data-inventory-name="${index}">${escapeHtml(item.name)}<br /><span class="muted">${escapeHtml(item.category)}</span></div>
+                    <div data-inventory-qty="${index}">${item.quantity}</div>
+                    <button type="button" class="edit-icon" data-edit="inventory" data-index="${index}">⚙️</button>
+                  </div>
+                `
+              )
+              .join('')
+      }
     </div>
     <script>
       document.querySelectorAll('[data-edit=\"inventory\"]').forEach((button) => {
         button.addEventListener('click', () => {
+          const index = button.dataset.index;
+          const nameEl = document.querySelector('[data-inventory-name=\"' + index + '\"]');
+          const qtyEl = document.querySelector('[data-inventory-qty=\"' + index + '\"]');
           openEditModal(
             'Изменить предмет',
-            '<label>Название<input name=\"value\" type=\"text\" value=\"Факел\" /></label>' +
-              '<label>Количество<input name=\"current\" type=\"number\" value=\"2\" /></label>',
-            button.closest('.table-row').children[1]
+            '<input type=\"hidden\" name=\"type\" value=\"inventory\" />' +
+              '<input type=\"hidden\" name=\"index\" value=\"' + index + '\" />' +
+              '<label>Название<input name=\"value\" type=\"text\" value=\"' + nameEl.textContent.trim() + '\" /></label>' +
+              '<label>Количество<input name=\"quantity\" type=\"number\" value=\"' + qtyEl.textContent + '\" /></label>',
+            qtyEl
           );
         });
       });
@@ -724,6 +859,8 @@ function renderInventoryScreen(character) {
 
 function renderMagicScreen(character) {
   const name = character.data?.name || 'Персонаж';
+  const game = character.game;
+  const spells = game.magic.spells;
   return `
     <div class="topbar">
       <a class="link-button back-button" href="/player/game">Назад</a>
@@ -732,16 +869,26 @@ function renderMagicScreen(character) {
     <div class="row-between" style="margin-top: 10px;">
       <strong>Мана:</strong>
       <div class="counter">
-        <span id="manaValue">50/50</span>
+        <span id="manaValue">${game.mana.current}/${game.mana.max}</span>
         <button type="button" class="edit-icon" data-edit="mana">⚙️</button>
       </div>
     </div>
     <div class="table-scroll" style="margin-top: 12px;">
-      <div class="table-row">
-        <div>Огненная стрела</div>
-        <div>5</div>
-        <button type="button" class="edit-icon" data-edit="spell">⚙️</button>
-      </div>
+      ${
+        spells.length === 0
+          ? '<p class="muted">Заклинаний пока нет.</p>'
+          : spells
+              .map(
+                (spell, index) => `
+                  <div class="table-row">
+                    <div data-spell-name="${index}">${escapeHtml(spell.name)}</div>
+                    <div data-spell-cost="${index}">${spell.cost}</div>
+                    <button type="button" class="edit-icon" data-edit="spell" data-index="${index}">⚙️</button>
+                  </div>
+                `
+              )
+              .join('')
+      }
     </div>
     <script>
       document.querySelectorAll('[data-edit=\"mana\"]').forEach((button) => {
@@ -749,19 +896,25 @@ function renderMagicScreen(character) {
           const target = document.getElementById('manaValue');
           openEditModal(
             'Изменить ману',
-            '<label>Текущее<input name=\"current\" type=\"number\" value=\"50\" /></label>' +
-              '<label>Максимум<input name=\"max\" type=\"number\" value=\"50\" /></label>',
+            '<input type=\"hidden\" name=\"type\" value=\"mana\" />' +
+              '<label>Текущее<input name=\"current\" type=\"number\" value=\"${game.mana.current}\" /></label>' +
+              '<label>Максимум<input name=\"max\" type=\"number\" value=\"${game.mana.max}\" /></label>',
             target
           );
         });
       });
       document.querySelectorAll('[data-edit=\"spell\"]').forEach((button) => {
         button.addEventListener('click', () => {
+          const index = button.dataset.index;
+          const nameEl = document.querySelector('[data-spell-name=\"' + index + '\"]');
+          const costEl = document.querySelector('[data-spell-cost=\"' + index + '\"]');
           openEditModal(
             'Изменить заклинание',
-            '<label>Название<input name=\"value\" type=\"text\" value=\"Огненная стрела\" /></label>' +
-              '<label>Стоимость<input name=\"current\" type=\"number\" value=\"5\" /></label>',
-            button.closest('.table-row').children[0]
+            '<input type=\"hidden\" name=\"type\" value=\"spell\" />' +
+              '<input type=\"hidden\" name=\"index\" value=\"' + index + '\" />' +
+              '<label>Название<input name=\"value\" type=\"text\" value=\"' + nameEl.textContent + '\" /></label>' +
+              '<label>Стоимость<input name=\"cost\" type=\"number\" value=\"' + costEl.textContent + '\" /></label>',
+            nameEl
           );
         });
       });
@@ -771,18 +924,23 @@ function renderMagicScreen(character) {
 
 function renderMoneyScreen(character) {
   const name = character.data?.name || 'Персонаж';
+  const money = character.game.money;
   return `
     <div class="topbar">
       <a class="link-button back-button" href="/player/game">Назад</a>
       <h2>Деньги — ${escapeHtml(name)}</h2>
     </div>
     <div class="table-scroll">
-      ${['Золото', 'Серебро', 'Медяки']
+      ${[
+        { label: 'Золото', key: 'gold', value: money.gold },
+        { label: 'Серебро', key: 'silver', value: money.silver },
+        { label: 'Медяки', key: 'copper', value: money.copper },
+      ]
         .map(
-          (label) => `
+          (item) => `
             <div class="table-row">
-              <div>${label}</div>
-              <div data-money="${label}">0</div>
+              <div>${item.label}</div>
+              <div data-money="${item.key}">${item.value}</div>
               <button type="button" class="edit-icon" data-edit="money">⚙️</button>
             </div>
           `
@@ -795,7 +953,9 @@ function renderMoneyScreen(character) {
           const target = button.closest('.table-row').querySelector('[data-money]');
           openEditModal(
             'Изменить значение',
-            '<label>Значение<input name=\"value\" type=\"number\" value=\"' + target.textContent + '\" /></label>',
+            '<input type=\"hidden\" name=\"type\" value=\"money\" />' +
+              '<input type=\"hidden\" name=\"key\" value=\"' + target.dataset.money + '\" />' +
+              '<label>Значение<input name=\"value\" type=\"number\" value=\"' + target.textContent + '\" /></label>',
             target
           );
         });
@@ -1257,6 +1417,7 @@ app.post('/player/setup', requireAuth('player'), async (req, res) => {
     },
     notes: req.body.notes,
   };
+  character.game = ensureGameData(character);
 
   await saveCharacters(characters);
 
@@ -1347,6 +1508,75 @@ app.get('/player/money', requireAuth('player'), async (req, res) => {
   }
 
   res.send(layout('Деньги', renderMoneyScreen(character)));
+});
+
+app.post('/player/game/save', requireAuth('player'), async (req, res) => {
+  const characters = await getCharacters();
+  const character = characters.find(
+    (item) => item.id === req.session.characterId
+  );
+
+  if (!character || !character.filled || character.status !== 'active') {
+    res.status(403).json({ error: 'not allowed' });
+    return;
+  }
+
+  const payload = req.body || {};
+  const game = character.game;
+
+  switch (payload.type) {
+    case 'level':
+      game.level = Number(payload.value) || game.level;
+      break;
+    case 'stat':
+      if (payload.key && Object.prototype.hasOwnProperty.call(game.stats, payload.key)) {
+        game.stats[payload.key] = Number(payload.value) || 0;
+      }
+      break;
+    case 'hp':
+      game.hp.current = Number(payload.current) || 0;
+      game.hp.max = Number(payload.max) || 0;
+      break;
+    case 'mana':
+      game.mana.current = Number(payload.current) || 0;
+      game.mana.max = Number(payload.max) || 0;
+      break;
+    case 'weapon': {
+      const index = Number(payload.index || 0);
+      if (game.weapons[index]) {
+        game.weapons[index].name = payload.value || game.weapons[index].name;
+        game.weapons[index].damage = payload.damage || game.weapons[index].damage;
+      }
+      break;
+    }
+    case 'inventory': {
+      const index = Number(payload.index || 0);
+      if (game.inventory[index]) {
+        game.inventory[index].name = payload.value || game.inventory[index].name;
+        game.inventory[index].quantity = Number(payload.quantity) || 0;
+      }
+      break;
+    }
+    case 'spell': {
+      const index = Number(payload.index || 0);
+      if (game.magic.spells[index]) {
+        game.magic.spells[index].name = payload.value || game.magic.spells[index].name;
+        game.magic.spells[index].cost = Number(payload.cost) || 0;
+      }
+      break;
+    }
+    case 'money':
+      if (payload.key && Object.prototype.hasOwnProperty.call(game.money, payload.key)) {
+        game.money[payload.key] = Number(payload.value) || 0;
+      }
+      break;
+    default:
+      res.status(400).json({ error: 'unknown type' });
+      return;
+  }
+
+  await saveCharacters(characters);
+  res.json({ ok: true });
 });
 
 ensureDataFiles().then(() => {
