@@ -211,16 +211,25 @@ function layout(title, body) {
       background: #dc2626;
     }
     .portrait-wrapper {
-      display: flex;
-      justify-content: center;
-      margin-bottom: 16px;
+      float: left;
+      margin: 0 16px 12px 0;
+      max-width: 160px;
     }
     .portrait {
-      width: 100%;
-      max-width: 320px;
+      width: 160px;
       border-radius: 12px;
       cursor: pointer;
       object-fit: cover;
+    }
+    .card::after {
+      content: '';
+      display: block;
+      clear: both;
+    }
+    .card-details {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
     .modal-backdrop {
       position: fixed;
@@ -406,16 +415,18 @@ function renderCharacterCard(character) {
           onerror="this.onerror=null;this.src='/portraits/default.png';"
         />
       </div>
-      <h2>${escapeHtml(data.name)}</h2>
-      <p><strong>Раса:</strong> ${escapeHtml(data.race)}</p>
-      <p><strong>Класс:</strong> ${escapeHtml(data.class)}</p>
-      <p><strong>Возраст:</strong> ${escapeHtml(data.age || 'не указан')}</p>
-      <p><strong>Рост:</strong> ${escapeHtml(data.height || 'не указан')}</p>
-      <p><strong>Внешность:</strong> ${escapeHtml(data.appearance || 'не указано')}</p>
-      <p><strong>Особые черты:</strong> ${escapeHtml(data.traits || 'не указано')}</p>
-      <p><strong>Основное оружие:</strong> ${escapeHtml(data.weapon)}</p>
-      <p><strong>Магия:</strong> ${escapeHtml(magicInfo)}</p>
-      <p><strong>Дополнительно:</strong> ${escapeHtml(data.notes || 'не указано')}</p>
+      <div class="card-details">
+        <div><strong>Имя:</strong> ${escapeHtml(data.name)}</div>
+        <div><strong>Раса:</strong> ${escapeHtml(data.race)}</div>
+        <div><strong>Класс:</strong> ${escapeHtml(data.class)}</div>
+        <div><strong>Возраст:</strong> ${escapeHtml(data.age || 'не указан')}</div>
+        <div><strong>Рост:</strong> ${escapeHtml(data.height || 'не указан')}</div>
+        <div><strong>Внешность:</strong> ${escapeHtml(data.appearance || 'не указано')}</div>
+        <div><strong>Особые черты:</strong> ${escapeHtml(data.traits || 'не указано')}</div>
+        <div><strong>Основное оружие:</strong> ${escapeHtml(data.weapon)}</div>
+        <div><strong>Магия:</strong> ${escapeHtml(magicInfo)}</div>
+        <div><strong>Дополнительно:</strong> ${escapeHtml(data.notes || 'не указано')}</div>
+      </div>
     </div>
   `;
 }
