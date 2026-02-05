@@ -517,7 +517,7 @@ function layout(title, body) {
           alert('Ошибка: текущее значение не может быть больше максимального.');
           return;
         }
-        editTarget.textContent = `${currentVal}/${maxVal}`;
+        editTarget.textContent = currentVal + '/' + maxVal;
       } else if (data.get('value') !== null) {
         editTarget.textContent = data.get('value');
       }
