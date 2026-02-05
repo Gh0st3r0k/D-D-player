@@ -150,6 +150,22 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+async function getThemeForRequest(req) {
+  if (!req.session.userId) {
+    return 'light';
+  }
+  if (req.session.role === 'admin') {
+    const users = await getUsers();
+    const adminUser = users.find((item) => item.id === req.session.userId);
+    return adminUser?.theme === 'dark' ? 'dark' : 'light';
+  }
+  const characters = await getCharacters();
+  const character = characters.find(
+    (item) => item.id === req.session.characterId
+  );
+  return character?.theme === 'dark' ? 'dark' : 'light';
+}
+
 function layout(title, body, theme = 'light') {
   return `<!doctype html>
 <html lang="ru">
@@ -183,6 +199,21 @@ function layout(title, body, theme = 'light') {
     body.dark .container {
       background: #1e293b;
       color: #e2e8f0;
+    }
+    body.dark .card,
+    body.dark .table-scroll,
+    body.dark .modal,
+    body.dark .list-item {
+      background: #0f172a;
+      border-color: #334155;
+      color: #e2e8f0;
+    }
+    body.dark input,
+    body.dark textarea,
+    body.dark select {
+      background: #0f172a;
+      color: #e2e8f0;
+      border: 1px solid #334155;
     }
     h1, h2 {
       margin-top: 0;
@@ -1254,6 +1285,7 @@ app.get('/logout', (req, res) => {
 
 app.get('/admin', requireAuth('admin'), async (req, res) => {
   const characters = await getCharacters();
+  const theme = await getThemeForRequest(req);
   const filter = req.query.filter || 'all';
   const filteredCharacters = characters.filter((character) => {
     if (filter === 'deleted') {
@@ -1313,6 +1345,14 @@ app.get('/admin', requireAuth('admin'), async (req, res) => {
     <div class="actions">
       <a class="link-button" href="/logout">Выйти</a>
     </div>
+    <form method="post" action="/admin/theme" class="actions">
+      <label for="admin-theme"><strong>Тема админа:</strong></label>
+      <select id="admin-theme" name="theme">
+        <option value="light"${theme === 'light' ? ' selected' : ''}>Светлая</option>
+        <option value="dark"${theme === 'dark' ? ' selected' : ''}>Тёмная</option>
+      </select>
+      <button type="submit">Сохранить тему</button>
+    </form>
 
     <h2>Создать логин игрока</h2>
     <form method="post" action="/admin/create-player">
@@ -1353,7 +1393,17 @@ app.get('/admin', requireAuth('admin'), async (req, res) => {
     }
   `;
 
-  res.send(layout('Админ-панель', content));
+  res.send(layout('Админ-панель', content, theme));
+});
+
+app.post('/admin/theme', requireAuth('admin'), async (req, res) => {
+  const users = await getUsers();
+  const adminUser = users.find((item) => item.id === req.session.userId);
+  if (adminUser) {
+    adminUser.theme = req.body.theme === 'dark' ? 'dark' : 'light';
+    await saveUsers(users);
+  }
+  res.redirect('/admin');
 });
 
 app.post('/admin/create-player', requireAuth('admin'), async (req, res) => {
@@ -1471,6 +1521,7 @@ app.post('/admin/characters/purge-deleted', requireAuth('admin'), async (req, re
 app.get('/admin/characters/:id', requireAuth('admin'), async (req, res) => {
   const characters = await getCharacters();
   const character = characters.find((item) => item.id === req.params.id);
+  const theme = await getThemeForRequest(req);
 
   if (!character || !character.filled) {
     const content = `
@@ -1478,7 +1529,7 @@ app.get('/admin/characters/:id', requireAuth('admin'), async (req, res) => {
       <p class="muted">Персонаж ещё не заполнен.</p>
       <a class="link-button" href="/admin">Назад</a>
     `;
-    res.status(404).send(layout('Нет данных', content));
+    res.status(404).send(layout('Нет данных', content, theme));
     return;
   }
 
@@ -1494,19 +1545,20 @@ app.get('/admin/characters/:id', requireAuth('admin'), async (req, res) => {
     </div>
   `;
 
-  res.send(layout('Карточка персонажа', content, character.theme));
+  res.send(layout('Карточка персонажа', content, theme));
 });
 
 app.get('/admin/characters/:id/game', requireAuth('admin'), async (req, res) => {
   const characters = await getCharacters();
   const character = characters.find((item) => item.id === req.params.id);
+  const theme = await getThemeForRequest(req);
 
   if (!character || !character.filled || character.status !== 'active') {
     res.redirect('/admin');
     return;
   }
 
-  res.send(layout('Игра', renderGameScreen(character), character.theme));
+  res.send(layout('Игра', renderGameScreen(character), theme));
 });
 
 app.get('/player', requireAuth('player'), async (req, res) => {
@@ -1521,7 +1573,8 @@ app.get('/player', requireAuth('player'), async (req, res) => {
       <p class="muted">Персонаж не найден. Обратитесь к администратору.</p>
       <a class="link-button" href="/logout">Выйти</a>
     `;
-    res.status(404).send(layout('Ошибка', content));
+    const theme = await getThemeForRequest(req);
+    res.status(404).send(layout('Ошибка', content, theme));
     return;
   }
 
