@@ -97,6 +97,7 @@ function normalizeCharacter(character) {
 function ensureGameData(character) {
   const canUseMagic = character?.data?.magic?.canUse;
   const weaponName = character?.data?.weapon || '';
+  const seededWeaponRemoved = character?.game?.seededWeaponRemoved ?? false;
   return {
     level: character?.game?.level ?? 1,
     hp: {
@@ -118,9 +119,10 @@ function ensureGameData(character) {
     weapons:
       character?.game?.weapons?.length > 0
         ? character.game.weapons
-        : weaponName
+        : weaponName && !seededWeaponRemoved
         ? [{ name: weaponName, damage: '1D4' }]
         : [],
+    seededWeaponRemoved,
     inventory: character?.game?.inventory ?? [],
     money: {
       gold: character?.game?.money?.gold ?? 0,
@@ -1782,7 +1784,11 @@ app.post('/player/game/save', requireAuth('player'), async (req, res) => {
     }
     case 'delete': {
       if (payload.targetType === 'weapon') {
-        game.weapons.splice(Number(payload.index || 0), 1);
+        const index = Number(payload.index || 0);
+        game.weapons.splice(index, 1);
+        if (game.weapons.length === 0 && character.data?.weapon) {
+          game.seededWeaponRemoved = true;
+        }
       }
       if (payload.targetType === 'inventory') {
         game.inventory.splice(Number(payload.index || 0), 1);
