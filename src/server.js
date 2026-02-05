@@ -1845,7 +1845,7 @@ app.get('/player/game', requireAuth('player'), async (req, res) => {
     return;
   }
 
-  res.send(layout('Игра', renderGameScreen(character)));
+  res.send(layout('Игра', renderGameScreen(character), character.theme));
 });
 
 app.get('/player/weapons', requireAuth('player'), async (req, res) => {
