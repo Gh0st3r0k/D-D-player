@@ -96,7 +96,7 @@ function normalizeCharacter(character) {
 
 function ensureGameData(character) {
   const canUseMagic = character?.data?.magic?.canUse;
-  const weaponName = character?.data?.weapon || 'Стандартное оружие';
+  const weaponName = character?.data?.weapon || '';
   return {
     level: character?.game?.level ?? 1,
     hp: {
@@ -118,7 +118,9 @@ function ensureGameData(character) {
     weapons:
       character?.game?.weapons?.length > 0
         ? character.game.weapons
-        : [{ name: weaponName, damage: '1D4' }],
+        : weaponName
+        ? [{ name: weaponName, damage: '1D4' }]
+        : [],
     inventory: character?.game?.inventory ?? [],
     money: {
       gold: character?.game?.money?.gold ?? 0,
@@ -475,6 +477,15 @@ function layout(title, body) {
       </form>
     </div>
   </div>
+  <div class="modal-backdrop" id="errorModal" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h3>Ошибка</h3>
+      <p id="errorMessage"></p>
+      <div class="modal-actions">
+        <button type="button" class="secondary" id="errorClose">Закрыть</button>
+      </div>
+    </div>
+  </div>
   <script>
     const modal = document.getElementById('confirmModal');
     const title = document.getElementById('confirmTitle');
@@ -492,6 +503,9 @@ function layout(title, body) {
     const editDelete = document.getElementById('editDelete');
     let editTarget = null;
     let editDeletePayload = null;
+    const errorModal = document.getElementById('errorModal');
+    const errorMessage = document.getElementById('errorMessage');
+    const errorClose = document.getElementById('errorClose');
 
     function openModal(form, text) {
       pendingForm = form;
@@ -540,6 +554,17 @@ function layout(title, body) {
       editDeletePayload = null;
     }
 
+    function openErrorModal(messageText) {
+      errorMessage.textContent = messageText;
+      errorModal.style.display = 'flex';
+      errorModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeErrorModal() {
+      errorModal.style.display = 'none';
+      errorModal.setAttribute('aria-hidden', 'true');
+    }
+
     document.querySelectorAll('form[data-confirm]').forEach((form) => {
       form.addEventListener('submit', (event) => {
         event.preventDefault();
@@ -578,6 +603,12 @@ function layout(title, body) {
     });
 
     editCancel.addEventListener('click', closeEditModal);
+    errorClose.addEventListener('click', closeErrorModal);
+    errorModal.addEventListener('click', (event) => {
+      if (event.target === errorModal) {
+        closeErrorModal();
+      }
+    });
     editDelete.addEventListener('click', () => {
       if (!editDeletePayload) {
         closeEditModal();
@@ -611,7 +642,7 @@ function layout(title, body) {
         const currentVal = Number(current);
         const maxVal = Number(max);
         if (Number.isNaN(currentVal) || Number.isNaN(maxVal) || currentVal > maxVal) {
-          alert('Ошибка: текущее значение не может быть больше максимального.');
+          openErrorModal('Ошибка: текущее значение не может быть больше максимального.');
           return;
         }
         editTarget.textContent = currentVal + '/' + maxVal;
