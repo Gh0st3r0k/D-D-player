@@ -283,6 +283,88 @@ function layout(title, body) {
       border-radius: 12px;
       object-fit: contain;
     }
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .back-button {
+      background: #e5e7eb;
+      color: #1f1f1f;
+    }
+    .row-between {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .counter {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .counter button {
+      padding: 6px 10px;
+    }
+    .stat-grid {
+      display: grid;
+      gap: 8px;
+      margin: 16px 0;
+    }
+    .stat-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 10px;
+      background: #f9fafb;
+      border-radius: 8px;
+    }
+    .nav-buttons {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .table-scroll {
+      max-height: 60vh;
+      overflow-y: auto;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px;
+      background: #fff;
+    }
+    .table-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr auto;
+      gap: 8px;
+      padding: 8px 4px;
+      border-bottom: 1px solid #e5e7eb;
+      align-items: center;
+    }
+    .table-row:last-child {
+      border-bottom: none;
+    }
+    .edit-icon {
+      background: #e9eefc;
+      color: #2f5cf7;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 14px;
+    }
+    .modal form {
+      display: grid;
+      gap: 10px;
+    }
+    .modal input {
+      width: 100%;
+    }
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
   </style>
 </head>
 <body>
@@ -304,6 +386,18 @@ function layout(title, body) {
       <img id="imageModalContent" alt="Портрет персонажа" />
     </div>
   </div>
+  <div class="modal-backdrop" id="editModal" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h3 id="editTitle">Изменить</h3>
+      <form id="editForm">
+        <div id="editFields"></div>
+        <div class="modal-footer">
+          <button type="button" class="secondary" id="editCancel">Отмена</button>
+          <button type="submit">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
   <script>
     const modal = document.getElementById('confirmModal');
     const title = document.getElementById('confirmTitle');
@@ -313,6 +407,12 @@ function layout(title, body) {
     let pendingForm = null;
     const imageModal = document.getElementById('imageModal');
     const imageModalContent = document.getElementById('imageModalContent');
+    const editModal = document.getElementById('editModal');
+    const editForm = document.getElementById('editForm');
+    const editFields = document.getElementById('editFields');
+    const editTitle = document.getElementById('editTitle');
+    const editCancel = document.getElementById('editCancel');
+    let editTarget = null;
 
     function openModal(form, text) {
       pendingForm = form;
@@ -341,6 +441,21 @@ function layout(title, body) {
       imageModal.setAttribute('aria-hidden', 'true');
       imageModalContent.src = '';
       document.body.style.overflow = '';
+    }
+
+    function openEditModal(titleText, fields, target) {
+      editTitle.textContent = titleText;
+      editFields.innerHTML = fields;
+      editTarget = target;
+      editModal.style.display = 'flex';
+      editModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeEditModal() {
+      editModal.style.display = 'none';
+      editModal.setAttribute('aria-hidden', 'true');
+      editFields.innerHTML = '';
+      editTarget = null;
     }
 
     document.querySelectorAll('form[data-confirm]').forEach((form) => {
@@ -376,7 +491,37 @@ function layout(title, body) {
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
         closeImageModal();
+        closeEditModal();
       }
+    });
+
+    editCancel.addEventListener('click', closeEditModal);
+    editModal.addEventListener('click', (event) => {
+      if (event.target === editModal) {
+        closeEditModal();
+      }
+    });
+    editForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      if (!editTarget) {
+        closeEditModal();
+        return;
+      }
+      const data = new FormData(editForm);
+      const current = data.get('current');
+      const max = data.get('max');
+      if (current !== null && max !== null) {
+        const currentVal = Number(current);
+        const maxVal = Number(max);
+        if (Number.isNaN(currentVal) || Number.isNaN(maxVal) || currentVal > maxVal) {
+          alert('Ошибка: текущее значение не может быть больше максимального.');
+          return;
+        }
+        editTarget.textContent = `${currentVal}/${maxVal}`;
+      } else if (data.get('value') !== null) {
+        editTarget.textContent = data.get('value');
+      }
+      closeEditModal();
     });
   </script>
 </body>
@@ -431,6 +576,231 @@ function renderCharacterCard(character) {
         <p class="detail-line"><strong>Дополнительно:</strong> ${escapeHtml(data.notes || 'не указано')}</p>
       </div>
     </div>
+  `;
+}
+
+function renderGameScreen(character) {
+  const name = character.data?.name || 'Персонаж';
+  return `
+    <div class="topbar">
+      <a class="link-button back-button" href="/player">Назад</a>
+      <h2>${escapeHtml(name)}</h2>
+    </div>
+    <div class="row-between">
+      <strong>Уровень:</strong>
+      <div class="counter">
+        <button type="button" class="edit-icon" data-adjust="level" data-dir="-1">-</button>
+        <span id="levelValue">1</span>
+        <button type="button" class="edit-icon" data-adjust="level" data-dir="1">+</button>
+      </div>
+    </div>
+    <div class="row-between" style="margin-top: 10px;">
+      <strong>HP:</strong>
+      <div class="counter">
+        <span id="hpValue">100/100</span>
+        <button type="button" class="edit-icon" data-edit="hp">⚙️</button>
+      </div>
+    </div>
+    <div class="stat-grid">
+      ${[
+        'Сила',
+        'Выносливость',
+        'Ловкость',
+        'Интелект',
+        'Мудрость',
+        'Харизма',
+      ]
+        .map(
+          (label) => `
+            <div class="stat-row">
+              <span>${label}:</span>
+              <div class="counter">
+                <button type="button" class="edit-icon" data-adjust="${label}">-</button>
+                <span data-stat="${label}">0</span>
+                <button type="button" class="edit-icon" data-adjust="${label}" data-dir="1">+</button>
+              </div>
+            </div>
+          `
+        )
+        .join('')}
+    </div>
+    <div class="nav-buttons">
+      <a class="link-button" href="/player/weapons">Снаряжение</a>
+      <a class="link-button" href="/player/inventory">Инвентарь</a>
+      <a class="link-button" href="/player/magic">Магия</a>
+      <a class="link-button" href="/player/money">Деньги</a>
+    </div>
+    <script>
+      document.querySelectorAll('[data-adjust]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const key = button.dataset.adjust;
+          const dir = Number(button.dataset.dir || '-1');
+          if (key === 'level') {
+            const el = document.getElementById('levelValue');
+            const next = Math.max(1, Number(el.textContent) + dir);
+            el.textContent = next;
+            return;
+          }
+          const stat = document.querySelector('[data-stat=\"' + key + '\"]');
+          const next = Number(stat.textContent) + dir;
+          stat.textContent = next;
+        });
+      });
+      document.querySelectorAll('[data-edit=\"hp\"]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const target = document.getElementById('hpValue');
+          openEditModal(
+            'Изменить HP',
+            '<label>Текущее HP<input name=\"current\" type=\"number\" value=\"100\" /></label>' +
+              '<label>Максимум HP<input name=\"max\" type=\"number\" value=\"100\" /></label>',
+            target
+          );
+        });
+      });
+    </script>
+  `;
+}
+
+function renderWeaponsScreen(character) {
+  const name = character.data?.name || 'Персонаж';
+  return `
+    <div class="topbar">
+      <a class="link-button back-button" href="/player/game">Назад</a>
+      <h2>Оружие — ${escapeHtml(name)}</h2>
+    </div>
+    <div class="table-scroll">
+      <div class="table-row">
+        <div>Стандартное оружие</div>
+        <div>1D4</div>
+        <button type="button" class="edit-icon" data-edit="weapon">⚙️</button>
+      </div>
+    </div>
+    <script>
+      document.querySelectorAll('[data-edit=\"weapon\"]').forEach((button) => {
+        button.addEventListener('click', () => {
+          openEditModal(
+            'Изменить оружие',
+            '<label>Название<input name=\"value\" type=\"text\" value=\"Стандартное оружие\" /></label>' +
+              '<label>Урон<input name=\"current\" type=\"text\" value=\"1D4\" /></label>',
+            button.closest('.table-row').children[0]
+          );
+        });
+      });
+    </script>
+  `;
+}
+
+function renderInventoryScreen(character) {
+  const name = character.data?.name || 'Персонаж';
+  return `
+    <div class="topbar">
+      <a class="link-button back-button" href="/player/game">Назад</a>
+      <h2>Инвентарь — ${escapeHtml(name)}</h2>
+    </div>
+    <div class="actions">
+      <span class="muted">Фильтры: Все | Оружие | Зелья | Прочее</span>
+    </div>
+    <div class="table-scroll">
+      <div class="table-row">
+        <div>Факел<br /><span class="muted">Прочее</span></div>
+        <div>2</div>
+        <button type="button" class="edit-icon" data-edit="inventory">⚙️</button>
+      </div>
+    </div>
+    <script>
+      document.querySelectorAll('[data-edit=\"inventory\"]').forEach((button) => {
+        button.addEventListener('click', () => {
+          openEditModal(
+            'Изменить предмет',
+            '<label>Название<input name=\"value\" type=\"text\" value=\"Факел\" /></label>' +
+              '<label>Количество<input name=\"current\" type=\"number\" value=\"2\" /></label>',
+            button.closest('.table-row').children[1]
+          );
+        });
+      });
+    </script>
+  `;
+}
+
+function renderMagicScreen(character) {
+  const name = character.data?.name || 'Персонаж';
+  return `
+    <div class="topbar">
+      <a class="link-button back-button" href="/player/game">Назад</a>
+      <h2>Магия — ${escapeHtml(name)}</h2>
+    </div>
+    <div class="row-between" style="margin-top: 10px;">
+      <strong>Мана:</strong>
+      <div class="counter">
+        <span id="manaValue">50/50</span>
+        <button type="button" class="edit-icon" data-edit="mana">⚙️</button>
+      </div>
+    </div>
+    <div class="table-scroll" style="margin-top: 12px;">
+      <div class="table-row">
+        <div>Огненная стрела</div>
+        <div>5</div>
+        <button type="button" class="edit-icon" data-edit="spell">⚙️</button>
+      </div>
+    </div>
+    <script>
+      document.querySelectorAll('[data-edit=\"mana\"]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const target = document.getElementById('manaValue');
+          openEditModal(
+            'Изменить ману',
+            '<label>Текущее<input name=\"current\" type=\"number\" value=\"50\" /></label>' +
+              '<label>Максимум<input name=\"max\" type=\"number\" value=\"50\" /></label>',
+            target
+          );
+        });
+      });
+      document.querySelectorAll('[data-edit=\"spell\"]').forEach((button) => {
+        button.addEventListener('click', () => {
+          openEditModal(
+            'Изменить заклинание',
+            '<label>Название<input name=\"value\" type=\"text\" value=\"Огненная стрела\" /></label>' +
+              '<label>Стоимость<input name=\"current\" type=\"number\" value=\"5\" /></label>',
+            button.closest('.table-row').children[0]
+          );
+        });
+      });
+    </script>
+  `;
+}
+
+function renderMoneyScreen(character) {
+  const name = character.data?.name || 'Персонаж';
+  return `
+    <div class="topbar">
+      <a class="link-button back-button" href="/player/game">Назад</a>
+      <h2>Деньги — ${escapeHtml(name)}</h2>
+    </div>
+    <div class="table-scroll">
+      ${['Золото', 'Серебро', 'Медяки']
+        .map(
+          (label) => `
+            <div class="table-row">
+              <div>${label}</div>
+              <div data-money="${label}">0</div>
+              <button type="button" class="edit-icon" data-edit="money">⚙️</button>
+            </div>
+          `
+        )
+        .join('')}
+    </div>
+    <script>
+      document.querySelectorAll('[data-edit=\"money\"]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const target = button.closest('.table-row').querySelector('[data-money]');
+          openEditModal(
+            'Изменить значение',
+            '<label>Значение<input name=\"value\" type=\"number\" value=\"' + target.textContent + '\" /></label>',
+            target
+          );
+        });
+      });
+    </script>
   `;
 }
 
@@ -759,6 +1129,11 @@ app.get('/player', requireAuth('player'), async (req, res) => {
       <form method="post" action="/player/toggle-active">
         <button type="submit">${character.status === 'active' ? 'Сделать неактивным' : 'Войти в игру'}</button>
       </form>
+      ${
+        character.status === 'active'
+          ? '<a class="link-button" href="/player/game">Далее</a>'
+          : ''
+      }
       <a class="link-button" href="/logout">Выйти</a>
     </div>
   `;
@@ -902,6 +1277,76 @@ app.post('/player/toggle-active', requireAuth('player'), async (req, res) => {
   character.status = character.status === 'active' ? 'inactive' : 'active';
   await saveCharacters(characters);
   res.redirect('/player');
+});
+
+app.get('/player/game', requireAuth('player'), async (req, res) => {
+  const characters = await getCharacters();
+  const character = characters.find(
+    (item) => item.id === req.session.characterId
+  );
+
+  if (!character || !character.filled || character.status !== 'active') {
+    res.redirect('/player');
+    return;
+  }
+
+  res.send(layout('Игра', renderGameScreen(character)));
+});
+
+app.get('/player/weapons', requireAuth('player'), async (req, res) => {
+  const characters = await getCharacters();
+  const character = characters.find(
+    (item) => item.id === req.session.characterId
+  );
+
+  if (!character || !character.filled || character.status !== 'active') {
+    res.redirect('/player');
+    return;
+  }
+
+  res.send(layout('Оружие', renderWeaponsScreen(character)));
+});
+
+app.get('/player/inventory', requireAuth('player'), async (req, res) => {
+  const characters = await getCharacters();
+  const character = characters.find(
+    (item) => item.id === req.session.characterId
+  );
+
+  if (!character || !character.filled || character.status !== 'active') {
+    res.redirect('/player');
+    return;
+  }
+
+  res.send(layout('Инвентарь', renderInventoryScreen(character)));
+});
+
+app.get('/player/magic', requireAuth('player'), async (req, res) => {
+  const characters = await getCharacters();
+  const character = characters.find(
+    (item) => item.id === req.session.characterId
+  );
+
+  if (!character || !character.filled || character.status !== 'active') {
+    res.redirect('/player');
+    return;
+  }
+
+  res.send(layout('Магия', renderMagicScreen(character)));
+});
+
+app.get('/player/money', requireAuth('player'), async (req, res) => {
+  const characters = await getCharacters();
+  const character = characters.find(
+    (item) => item.id === req.session.characterId
+  );
+
+  if (!character || !character.filled || character.status !== 'active') {
+    res.redirect('/player');
+    return;
+  }
+
+  res.send(layout('Деньги', renderMoneyScreen(character)));
 });
 
 ensureDataFiles().then(() => {
