@@ -125,7 +125,6 @@ function ensureGameData(character) {
       silver: character?.game?.money?.silver ?? 0,
       copper: character?.game?.money?.copper ?? 0,
     },
-    skills: character?.game?.skills ?? [],
     magic: {
       spells: character?.game?.magic?.spells ?? [],
     },
@@ -688,21 +687,6 @@ function layout(title, body) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type, value, cost, index }),
-        });
-      } else if (type === 'skill') {
-        const skillValue = data.get('skillValue');
-        const nameEl = document.querySelector('[data-skill-name=\"' + index + '\"]');
-        const valueEl = document.querySelector('[data-skill-value=\"' + index + '\"]');
-        if (nameEl) {
-          nameEl.textContent = value;
-        }
-        if (valueEl) {
-          valueEl.textContent = skillValue;
-        }
-        fetch('/player/game/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type, value, skillValue, index }),
         }).then(() => {
           if (index === 'new') {
             location.reload();
@@ -825,7 +809,6 @@ function renderGameScreen(character) {
       <a class="link-button" href="/player/inventory">Инвентарь</a>
       <a class="link-button" href="/player/magic">Магия</a>
       <a class="link-button" href="/player/money">Деньги</a>
-      <a class="link-button" href="/player/skills">Навыки</a>
     </div>
     <script>
       document.querySelectorAll('[data-adjust]').forEach((button) => {
@@ -1048,6 +1031,9 @@ function renderMagicScreen(character) {
         <button type="button" class="edit-icon" data-edit="mana">⚙️</button>
       </div>
     </div>
+    <div class="actions" style="margin-top: 12px;">
+      <button type="button" class="edit-icon" data-add="spell">Добавить заклинание</button>
+    </div>
     <div class="table-scroll" style="margin-top: 12px;">
       ${
         spells.length === 0
@@ -1091,6 +1077,18 @@ function renderMagicScreen(character) {
               '<label>Стоимость<input name=\"cost\" type=\"number\" value=\"' + costEl.textContent + '\" /></label>',
             nameEl,
             { type: 'spell', index }
+          );
+        });
+      });
+      document.querySelectorAll('[data-add=\"spell\"]').forEach((button) => {
+        button.addEventListener('click', () => {
+          openEditModal(
+            'Добавить заклинание',
+            '<input type=\"hidden\" name=\"type\" value=\"spell\" />' +
+              '<input type=\"hidden\" name=\"index\" value=\"new\" />' +
+              '<label>Название<input name=\"value\" type=\"text\" value=\"\" /></label>' +
+              '<label>Стоимость<input name=\"cost\" type=\"number\" value=\"0\" /></label>',
+            button
           );
         });
       });
@@ -1140,66 +1138,7 @@ function renderMoneyScreen(character) {
   `;
 }
 
-function renderSkillsScreen(character) {
-  const name = character.data?.name || 'Персонаж';
-  const skills = character.game.skills;
-  return `
-    <div class="topbar">
-      <a class="link-button back-button" href="/player/game">Назад</a>
-      <h2>Навыки — ${escapeHtml(name)}</h2>
-    </div>
-    <div class="actions">
-      <button type="button" class="edit-icon" data-add="skill">Добавить навык</button>
-    </div>
-    <div class="table-scroll">
-      ${
-        skills.length === 0
-          ? '<p class="muted">Навыков пока нет.</p>'
-          : skills
-              .map(
-                (skill, index) => `
-                  <div class="table-row">
-                    <div data-skill-name="${index}">${escapeHtml(skill.name)}</div>
-                    <div data-skill-value="${index}">${escapeHtml(skill.value)}</div>
-                    <button type="button" class="edit-icon" data-edit="skill" data-index="${index}">⚙️</button>
-                  </div>
-                `
-              )
-              .join('')
-      }
-    </div>
-    <script>
-      document.querySelectorAll('[data-edit=\"skill\"]').forEach((button) => {
-        button.addEventListener('click', () => {
-          const index = button.dataset.index;
-          const nameEl = document.querySelector('[data-skill-name=\"' + index + '\"]');
-          const valueEl = document.querySelector('[data-skill-value=\"' + index + '\"]');
-          openEditModal(
-            'Изменить навык',
-            '<input type=\"hidden\" name=\"type\" value=\"skill\" />' +
-              '<input type=\"hidden\" name=\"index\" value=\"' + index + '\" />' +
-              '<label>Название<input name=\"value\" type=\"text\" value=\"' + nameEl.textContent + '\" /></label>' +
-              '<label>Значение<input name=\"skillValue\" type=\"text\" value=\"' + valueEl.textContent + '\" /></label>',
-            nameEl,
-            { type: 'skill', index }
-          );
-        });
-      });
-      document.querySelectorAll('[data-add=\"skill\"]').forEach((button) => {
-        button.addEventListener('click', () => {
-          openEditModal(
-            'Добавить навык',
-            '<input type=\"hidden\" name=\"type\" value=\"skill\" />' +
-              '<input type=\"hidden\" name=\"index\" value=\"new\" />' +
-              '<label>Название<input name=\"value\" type=\"text\" value=\"\" /></label>' +
-              '<label>Значение<input name=\"skillValue\" type=\"text\" value=\"\" /></label>',
-            button
-          );
-        });
-      });
-    </script>
-  `;
-}
+
 
 app.get('/', async (req, res) => {
   if (req.session.userId) {
@@ -1747,20 +1686,6 @@ app.get('/player/money', requireAuth('player'), async (req, res) => {
   res.send(layout('Деньги', renderMoneyScreen(character)));
 });
 
-app.get('/player/skills', requireAuth('player'), async (req, res) => {
-  const characters = await getCharacters();
-  const character = characters.find(
-    (item) => item.id === req.session.characterId
-  );
-
-  if (!character || !character.filled || character.status !== 'active') {
-    res.redirect('/player');
-    return;
-  }
-
-  res.send(layout('Навыки', renderSkillsScreen(character)));
-});
-
 app.post('/player/game/save', requireAuth('player'), async (req, res) => {
   const characters = await getCharacters();
   const character = characters.find(
@@ -1834,31 +1759,20 @@ app.post('/player/game/save', requireAuth('player'), async (req, res) => {
       if (payload.targetType === 'spell') {
         game.magic.spells.splice(Number(payload.index || 0), 1);
       }
-      if (payload.targetType === 'skill') {
-        game.skills.splice(Number(payload.index || 0), 1);
-      }
       break;
     }
     case 'spell': {
-      const index = Number(payload.index || 0);
-      if (game.magic.spells[index]) {
-        game.magic.spells[index].name = payload.value || game.magic.spells[index].name;
-        game.magic.spells[index].cost = Number(payload.cost) || 0;
-      }
-      break;
-    }
-    case 'skill': {
       if (payload.index === 'new') {
-        game.skills.push({
-          name: payload.value || 'Навык',
-          value: payload.skillValue || '',
+        game.magic.spells.push({
+          name: payload.value || 'Заклинание',
+          cost: Number(payload.cost) || 0,
         });
         break;
       }
       const index = Number(payload.index || 0);
-      if (game.skills[index]) {
-        game.skills[index].name = payload.value || game.skills[index].name;
-        game.skills[index].value = payload.skillValue || game.skills[index].value;
+      if (game.magic.spells[index]) {
+        game.magic.spells[index].name = payload.value || game.magic.spells[index].name;
+        game.magic.spells[index].cost = Number(payload.cost) || 0;
       }
       break;
     }
