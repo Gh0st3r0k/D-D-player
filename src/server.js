@@ -227,9 +227,12 @@ function layout(title, body) {
       clear: both;
     }
     .card-details {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
+      display: block;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .detail-line {
+      margin: 0 0 6px;
     }
     .modal-backdrop {
       position: fixed;
@@ -416,16 +419,16 @@ function renderCharacterCard(character) {
         />
       </div>
       <div class="card-details">
-        <div><strong>Имя:</strong> ${escapeHtml(data.name)}</div>
-        <div><strong>Раса:</strong> ${escapeHtml(data.race)}</div>
-        <div><strong>Класс:</strong> ${escapeHtml(data.class)}</div>
-        <div><strong>Возраст:</strong> ${escapeHtml(data.age || 'не указан')}</div>
-        <div><strong>Рост:</strong> ${escapeHtml(data.height || 'не указан')}</div>
-        <div><strong>Внешность:</strong> ${escapeHtml(data.appearance || 'не указано')}</div>
-        <div><strong>Особые черты:</strong> ${escapeHtml(data.traits || 'не указано')}</div>
-        <div><strong>Основное оружие:</strong> ${escapeHtml(data.weapon)}</div>
-        <div><strong>Магия:</strong> ${escapeHtml(magicInfo)}</div>
-        <div><strong>Дополнительно:</strong> ${escapeHtml(data.notes || 'не указано')}</div>
+        <p class="detail-line"><strong>Имя:</strong> ${escapeHtml(data.name)}</p>
+        <p class="detail-line"><strong>Раса:</strong> ${escapeHtml(data.race)}</p>
+        <p class="detail-line"><strong>Класс:</strong> ${escapeHtml(data.class)}</p>
+        <p class="detail-line"><strong>Возраст:</strong> ${escapeHtml(data.age || 'не указан')}</p>
+        <p class="detail-line"><strong>Рост:</strong> ${escapeHtml(data.height || 'не указан')}</p>
+        <p class="detail-line"><strong>Внешность:</strong> ${escapeHtml(data.appearance || 'не указано')}</p>
+        <p class="detail-line"><strong>Особые черты:</strong> ${escapeHtml(data.traits || 'не указано')}</p>
+        <p class="detail-line"><strong>Основное оружие:</strong> ${escapeHtml(data.weapon)}</p>
+        <p class="detail-line"><strong>Магия:</strong> ${escapeHtml(magicInfo)}</p>
+        <p class="detail-line"><strong>Дополнительно:</strong> ${escapeHtml(data.notes || 'не указано')}</p>
       </div>
     </div>
   `;
