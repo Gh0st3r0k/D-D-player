@@ -90,6 +90,9 @@ function normalizeCharacter(character) {
   if (normalized.status !== 'locked' && !normalized.filled) {
     normalized.status = 'locked';
   }
+  if (!normalized.theme) {
+    normalized.theme = 'light';
+  }
   normalized.game = ensureGameData(normalized);
   return normalized;
 }
@@ -147,7 +150,7 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-function layout(title, body) {
+function layout(title, body, theme = 'light') {
   return `<!doctype html>
 <html lang="ru">
 <head>
@@ -155,12 +158,19 @@ function layout(title, body) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(title)}</title>
   <style>
+    * {
+      box-sizing: border-box;
+    }
     body {
       font-family: Arial, sans-serif;
       background: #f3f3f3;
       margin: 0;
       padding: 24px;
       color: #1f1f1f;
+    }
+    body.dark {
+      background: #0f172a;
+      color: #e2e8f0;
     }
     .container {
       max-width: 640px;
@@ -169,6 +179,10 @@ function layout(title, body) {
       padding: 24px;
       border-radius: 12px;
       box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    }
+    body.dark .container {
+      background: #1e293b;
+      color: #e2e8f0;
     }
     h1, h2 {
       margin-top: 0;
@@ -216,6 +230,10 @@ function layout(title, body) {
       border: 1px solid #e3e3e3;
       border-radius: 10px;
       background: #fff;
+    }
+    body.dark .list-item {
+      background: #0f172a;
+      border-color: #334155;
     }
     .actions {
       display: flex;
@@ -447,7 +465,7 @@ function layout(title, body) {
     }
   </style>
 </head>
-<body>
+<body class="${escapeHtml(theme)}">
   <div class="container">
     ${body}
   </div>
@@ -1266,6 +1284,7 @@ app.get('/admin', requireAuth('admin'), async (req, res) => {
       const actions = `
         <div class="actions">
           ${canView ? `<a class="link-button" href="/admin/characters/${character.id}">Открыть карточку</a>` : ''}
+          ${character.status === 'active' ? `<a class="link-button" href="/admin/characters/${character.id}/game">Далее</a>` : ''}
           ${canToggle ? `<form method="post" action="/admin/characters/${character.id}/toggle-active">
               <button type="submit">${character.status === 'active' ? 'Сделать неактивным' : 'Сделать активным'}</button>
             </form>` : ''}
@@ -1305,6 +1324,13 @@ app.get('/admin', requireAuth('admin'), async (req, res) => {
         <label for="new-password">Пароль</label>
         <input id="new-password" name="password" required />
       </div>
+      <div>
+        <label for="new-theme">Тема</label>
+        <select id="new-theme" name="theme">
+          <option value="light">Светлая</option>
+          <option value="dark">Тёмная</option>
+        </select>
+      </div>
       <button type="submit">Создать</button>
     </form>
 
@@ -1331,7 +1357,7 @@ app.get('/admin', requireAuth('admin'), async (req, res) => {
 });
 
 app.post('/admin/create-player', requireAuth('admin'), async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, theme } = req.body;
   const users = await getUsers();
   const characters = await getCharacters();
 
@@ -1360,6 +1386,7 @@ app.post('/admin/create-player', requireAuth('admin'), async (req, res) => {
     filled: false,
     data: null,
     status: 'locked',
+    theme: theme === 'dark' ? 'dark' : 'light',
   };
 
   users.push(newUser);
@@ -1467,7 +1494,19 @@ app.get('/admin/characters/:id', requireAuth('admin'), async (req, res) => {
     </div>
   `;
 
-  res.send(layout('Карточка персонажа', content));
+  res.send(layout('Карточка персонажа', content, character.theme));
+});
+
+app.get('/admin/characters/:id/game', requireAuth('admin'), async (req, res) => {
+  const characters = await getCharacters();
+  const character = characters.find((item) => item.id === req.params.id);
+
+  if (!character || !character.filled || character.status !== 'active') {
+    res.redirect('/admin');
+    return;
+  }
+
+  res.send(layout('Игра', renderGameScreen(character), character.theme));
 });
 
 app.get('/player', requireAuth('player'), async (req, res) => {
@@ -1494,6 +1533,14 @@ app.get('/player', requireAuth('player'), async (req, res) => {
   const content = `
     <h1>Карточка персонажа</h1>
     ${renderCharacterCard(character)}
+    <form method="post" action="/player/theme" class="actions">
+      <label for="theme-select"><strong>Тема:</strong></label>
+      <select id="theme-select" name="theme">
+        <option value="light"${character.theme === 'light' ? ' selected' : ''}>Светлая</option>
+        <option value="dark"${character.theme === 'dark' ? ' selected' : ''}>Тёмная</option>
+      </select>
+      <button type="submit">Сохранить тему</button>
+    </form>
     <div class="actions">
       <form method="post" action="/player/toggle-active">
         <button type="submit">${character.status === 'active' ? 'Сделать неактивным' : 'Войти в игру'}</button>
@@ -1507,7 +1554,7 @@ app.get('/player', requireAuth('player'), async (req, res) => {
     </div>
   `;
 
-  res.send(layout('Карточка персонажа', content));
+  res.send(layout('Карточка персонажа', content, character.theme));
 });
 
 app.get('/player/setup', requireAuth('player'), async (req, res) => {
@@ -1649,6 +1696,22 @@ app.post('/player/toggle-active', requireAuth('player'), async (req, res) => {
   res.redirect('/player');
 });
 
+app.post('/player/theme', requireAuth('player'), async (req, res) => {
+  const characters = await getCharacters();
+  const character = characters.find(
+    (item) => item.id === req.session.characterId
+  );
+
+  if (!character) {
+    res.redirect('/player');
+    return;
+  }
+
+  character.theme = req.body.theme === 'dark' ? 'dark' : 'light';
+  await saveCharacters(characters);
+  res.redirect('/player');
+});
+
 app.get('/player/game', requireAuth('player'), async (req, res) => {
   const characters = await getCharacters();
   const character = characters.find(
@@ -1674,7 +1737,7 @@ app.get('/player/weapons', requireAuth('player'), async (req, res) => {
     return;
   }
 
-  res.send(layout('Оружие', renderWeaponsScreen(character)));
+  res.send(layout('Оружие', renderWeaponsScreen(character), character.theme));
 });
 
 app.get('/player/inventory', requireAuth('player'), async (req, res) => {
@@ -1688,7 +1751,7 @@ app.get('/player/inventory', requireAuth('player'), async (req, res) => {
     return;
   }
 
-  res.send(layout('Инвентарь', renderInventoryScreen(character)));
+  res.send(layout('Инвентарь', renderInventoryScreen(character), character.theme));
 });
 
 app.get('/player/magic', requireAuth('player'), async (req, res) => {
@@ -1702,7 +1765,7 @@ app.get('/player/magic', requireAuth('player'), async (req, res) => {
     return;
   }
 
-  res.send(layout('Магия', renderMagicScreen(character)));
+  res.send(layout('Магия', renderMagicScreen(character), character.theme));
 });
 
 app.get('/player/money', requireAuth('player'), async (req, res) => {
@@ -1716,7 +1779,7 @@ app.get('/player/money', requireAuth('player'), async (req, res) => {
     return;
   }
 
-  res.send(layout('Деньги', renderMoneyScreen(character)));
+  res.send(layout('Деньги', renderMoneyScreen(character), character.theme));
 });
 
 app.post('/player/game/save', requireAuth('player'), async (req, res) => {
