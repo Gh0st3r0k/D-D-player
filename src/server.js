@@ -386,6 +386,29 @@ function layout(title, body) {
     .table-row:last-child {
       border-bottom: none;
     }
+    .category-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: #fff;
+      margin-top: 4px;
+    }
+    .category-plants {
+      background: #16a34a;
+    }
+    .category-potions {
+      background: #7c3aed;
+    }
+    .category-armor {
+      background: #92400e;
+    }
+    .category-weapons {
+      background: #2563eb;
+    }
+    .category-other {
+      background: #6b7280;
+    }
     .edit-icon {
       background: #e9eefc;
       color: #2f5cf7;
@@ -404,6 +427,16 @@ function layout(title, body) {
       display: flex;
       justify-content: flex-end;
       gap: 10px;
+    }
+    .filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .filter-row button {
+      background: #e5e7eb;
+      color: #1f1f1f;
     }
   </style>
 </head>
@@ -581,17 +614,39 @@ function layout(title, body) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type, value, damage, index }),
+        }).then(() => {
+          if (index === 'new') {
+            location.reload();
+          }
         });
       } else if (type === 'inventory') {
         const quantity = data.get('quantity');
+        const category = data.get('category') || 'other';
         const qtyEl = document.querySelector('[data-inventory-qty=\"' + index + '\"]');
+        const nameEl = document.querySelector('[data-inventory-name=\"' + index + '\"]');
+        const labels = {
+          plants: 'Растения',
+          potions: 'Зелья',
+          armor: 'Броня',
+          weapons: 'Оружие',
+          other: 'Остальное',
+        };
         if (qtyEl) {
           qtyEl.textContent = quantity;
+        }
+        if (nameEl) {
+          nameEl.dataset.category = category;
+          nameEl.innerHTML =
+            value + '<br /><span class=\"category-pill category-' + category + '\">' + (labels[category] || 'Остальное') + '</span>';
         }
         fetch('/player/game/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type, value, quantity, index }),
+          body: JSON.stringify({ type, value, quantity, category, index }),
+        }).then(() => {
+          if (index === 'new') {
+            location.reload();
+          }
         });
       } else if (type === 'spell') {
         const cost = data.get('cost');
@@ -776,6 +831,9 @@ function renderWeaponsScreen(character) {
       <a class="link-button back-button" href="/player/game">Назад</a>
       <h2>Оружие — ${escapeHtml(name)}</h2>
     </div>
+    <div class="actions">
+      <button type="button" class="edit-icon" data-add="weapon">Добавить оружие</button>
+    </div>
     <div class="table-scroll">
       ${weapons
         .map(
@@ -805,6 +863,18 @@ function renderWeaponsScreen(character) {
           );
         });
       });
+      document.querySelectorAll('[data-add=\"weapon\"]').forEach((button) => {
+        button.addEventListener('click', () => {
+          openEditModal(
+            'Добавить оружие',
+            '<input type=\"hidden\" name=\"type\" value=\"weapon\" />' +
+              '<input type=\"hidden\" name=\"index\" value=\"new\" />' +
+              '<label>Название<input name=\"value\" type=\"text\" value=\"\" /></label>' +
+              '<label>Урон<input name=\"damage\" type=\"text\" value=\"\" /></label>',
+            button
+          );
+        });
+      });
     </script>
   `;
 }
@@ -812,13 +882,26 @@ function renderWeaponsScreen(character) {
 function renderInventoryScreen(character) {
   const name = character.data?.name || 'Персонаж';
   const inventory = character.game.inventory;
+  const categoryLabels = {
+    plants: 'Растения',
+    potions: 'Зелья',
+    armor: 'Броня',
+    weapons: 'Оружие',
+    other: 'Остальное',
+  };
   return `
     <div class="topbar">
       <a class="link-button back-button" href="/player/game">Назад</a>
       <h2>Инвентарь — ${escapeHtml(name)}</h2>
     </div>
-    <div class="actions">
-      <span class="muted">Фильтры: Растения | Зелья | Броня | Оружие | Остальное</span>
+    <div class="filter-row">
+      <button type="button" data-filter="all">Все</button>
+      <button type="button" data-filter="plants">Растения</button>
+      <button type="button" data-filter="potions">Зелья</button>
+      <button type="button" data-filter="armor">Броня</button>
+      <button type="button" data-filter="weapons">Оружие</button>
+      <button type="button" data-filter="other">Остальное</button>
+      <button type="button" class="edit-icon" data-add="inventory">Добавить предмет</button>
     </div>
     <div class="table-scroll">
       ${
@@ -828,7 +911,7 @@ function renderInventoryScreen(character) {
               .map(
                 (item, index) => `
                   <div class="table-row">
-                    <div data-inventory-name="${index}">${escapeHtml(item.name)}<br /><span class="muted">${escapeHtml(item.category)}</span></div>
+                    <div data-inventory-name="${index}" data-category="${escapeHtml(item.category)}">${escapeHtml(item.name)}<br /><span class="category-pill category-${escapeHtml(item.category)}">${escapeHtml(categoryLabels[item.category] || 'Остальное')}</span></div>
                     <div data-inventory-qty="${index}">${item.quantity}</div>
                     <button type="button" class="edit-icon" data-edit="inventory" data-index="${index}">⚙️</button>
                   </div>
@@ -848,9 +931,49 @@ function renderInventoryScreen(character) {
             '<input type=\"hidden\" name=\"type\" value=\"inventory\" />' +
               '<input type=\"hidden\" name=\"index\" value=\"' + index + '\" />' +
               '<label>Название<input name=\"value\" type=\"text\" value=\"' + nameEl.textContent.trim() + '\" /></label>' +
-              '<label>Количество<input name=\"quantity\" type=\"number\" value=\"' + qtyEl.textContent + '\" /></label>',
+              '<label>Количество<input name=\"quantity\" type=\"number\" value=\"' + qtyEl.textContent + '\" /></label>' +
+              '<label>Категория<select name=\"category\">' +
+                '<option value=\"plants\"' + (nameEl.dataset.category === 'plants' ? ' selected' : '') + '>Растения</option>' +
+                '<option value=\"potions\"' + (nameEl.dataset.category === 'potions' ? ' selected' : '') + '>Зелья</option>' +
+                '<option value=\"armor\"' + (nameEl.dataset.category === 'armor' ? ' selected' : '') + '>Броня</option>' +
+                '<option value=\"weapons\"' + (nameEl.dataset.category === 'weapons' ? ' selected' : '') + '>Оружие</option>' +
+                '<option value=\"other\"' + (nameEl.dataset.category === 'other' ? ' selected' : '') + '>Остальное</option>' +
+              '</select></label>',
             qtyEl
           );
+        });
+      });
+      document.querySelectorAll('[data-add=\"inventory\"]').forEach((button) => {
+        button.addEventListener('click', () => {
+          openEditModal(
+            'Добавить предмет',
+            '<input type=\"hidden\" name=\"type\" value=\"inventory\" />' +
+              '<input type=\"hidden\" name=\"index\" value=\"new\" />' +
+              '<label>Название<input name=\"value\" type=\"text\" value=\"\" /></label>' +
+              '<label>Количество<input name=\"quantity\" type=\"number\" value=\"1\" /></label>' +
+              '<label>Категория<select name=\"category\">' +
+                '<option value=\"plants\">Растения</option>' +
+                '<option value=\"potions\">Зелья</option>' +
+                '<option value=\"armor\">Броня</option>' +
+                '<option value=\"weapons\">Оружие</option>' +
+                '<option value=\"other\">Остальное</option>' +
+              '</select></label>',
+            button
+          );
+        });
+      });
+      document.querySelectorAll('[data-filter]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const filter = button.dataset.filter;
+          document.querySelectorAll('.table-row [data-inventory-name]').forEach((nameEl) => {
+            const row = nameEl.closest('.table-row');
+            const category = nameEl.dataset.category;
+            if (filter === 'all' || category === filter) {
+              row.style.display = 'grid';
+            } else {
+              row.style.display = 'none';
+            }
+          });
         });
       });
     </script>
@@ -1542,6 +1665,13 @@ app.post('/player/game/save', requireAuth('player'), async (req, res) => {
       game.mana.max = Number(payload.max) || 0;
       break;
     case 'weapon': {
+      if (payload.index === 'new') {
+        game.weapons.push({
+          name: payload.value || 'Новое оружие',
+          damage: payload.damage || '1D4',
+        });
+        break;
+      }
       const index = Number(payload.index || 0);
       if (game.weapons[index]) {
         game.weapons[index].name = payload.value || game.weapons[index].name;
@@ -1550,10 +1680,19 @@ app.post('/player/game/save', requireAuth('player'), async (req, res) => {
       break;
     }
     case 'inventory': {
+      if (payload.index === 'new') {
+        game.inventory.push({
+          name: payload.value || 'Новый предмет',
+          quantity: Number(payload.quantity) || 1,
+          category: payload.category || 'other',
+        });
+        break;
+      }
       const index = Number(payload.index || 0);
       if (game.inventory[index]) {
         game.inventory[index].name = payload.value || game.inventory[index].name;
         game.inventory[index].quantity = Number(payload.quantity) || 0;
+        game.inventory[index].category = payload.category || game.inventory[index].category;
       }
       break;
     }
