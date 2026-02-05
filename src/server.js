@@ -166,6 +166,10 @@ async function getThemeForRequest(req) {
   return character?.theme === 'dark' ? 'dark' : 'light';
 }
 
+function getCharacterById(characters, id) {
+  return characters.find((item) => item.id === id);
+}
+
 function layout(title, body, theme = 'light') {
   return `<!doctype html>
 <html lang="ru">
@@ -207,6 +211,9 @@ function layout(title, body, theme = 'light') {
       background: #0f172a;
       border-color: #334155;
       color: #e2e8f0;
+    }
+    body.dark .stat-row {
+      background: #0b1220;
     }
     body.dark input,
     body.dark textarea,
@@ -1520,8 +1527,8 @@ app.post('/admin/characters/purge-deleted', requireAuth('admin'), async (req, re
 
 app.get('/admin/characters/:id', requireAuth('admin'), async (req, res) => {
   const characters = await getCharacters();
-  const character = characters.find((item) => item.id === req.params.id);
-  const theme = await getThemeForRequest(req);
+  const character = getCharacterById(characters, req.params.id);
+  const theme = character?.theme || (await getThemeForRequest(req));
 
   if (!character || !character.filled) {
     const content = `
@@ -1538,6 +1545,11 @@ app.get('/admin/characters/:id', requireAuth('admin'), async (req, res) => {
     ${renderCharacterCard(character)}
     <div class="actions">
       <a class="link-button" href="/admin">Вернуться к списку</a>
+      <a class="link-button" href="/admin/characters/${character.id}/game">Далее</a>
+      <a class="link-button" href="/admin/characters/${character.id}/weapons">Снаряжение</a>
+      <a class="link-button" href="/admin/characters/${character.id}/inventory">Инвентарь</a>
+      <a class="link-button" href="/admin/characters/${character.id}/magic">Магия</a>
+      <a class="link-button" href="/admin/characters/${character.id}/money">Деньги</a>
       <form method="post" action="/admin/characters/${character.id}/toggle-active">
         <button type="submit">${character.status === 'active' ? 'Сделать неактивным' : 'Сделать активным'}</button>
       </form>
@@ -1550,15 +1562,72 @@ app.get('/admin/characters/:id', requireAuth('admin'), async (req, res) => {
 
 app.get('/admin/characters/:id/game', requireAuth('admin'), async (req, res) => {
   const characters = await getCharacters();
-  const character = characters.find((item) => item.id === req.params.id);
-  const theme = await getThemeForRequest(req);
+  const character = getCharacterById(characters, req.params.id);
+  const theme = character?.theme || (await getThemeForRequest(req));
 
   if (!character || !character.filled || character.status !== 'active') {
     res.redirect('/admin');
     return;
   }
 
+  req.session.adminCharacterId = character.id;
   res.send(layout('Игра', renderGameScreen(character), theme));
+});
+
+app.get('/admin/characters/:id/weapons', requireAuth('admin'), async (req, res) => {
+  const characters = await getCharacters();
+  const character = getCharacterById(characters, req.params.id);
+  const theme = character?.theme || (await getThemeForRequest(req));
+
+  if (!character || !character.filled) {
+    res.redirect('/admin');
+    return;
+  }
+
+  req.session.adminCharacterId = character.id;
+  res.send(layout('Оружие', renderWeaponsScreen(character), theme));
+});
+
+app.get('/admin/characters/:id/inventory', requireAuth('admin'), async (req, res) => {
+  const characters = await getCharacters();
+  const character = getCharacterById(characters, req.params.id);
+  const theme = character?.theme || (await getThemeForRequest(req));
+
+  if (!character || !character.filled) {
+    res.redirect('/admin');
+    return;
+  }
+
+  req.session.adminCharacterId = character.id;
+  res.send(layout('Инвентарь', renderInventoryScreen(character), theme));
+});
+
+app.get('/admin/characters/:id/magic', requireAuth('admin'), async (req, res) => {
+  const characters = await getCharacters();
+  const character = getCharacterById(characters, req.params.id);
+  const theme = character?.theme || (await getThemeForRequest(req));
+
+  if (!character || !character.filled) {
+    res.redirect('/admin');
+    return;
+  }
+
+  req.session.adminCharacterId = character.id;
+  res.send(layout('Магия', renderMagicScreen(character), theme));
+});
+
+app.get('/admin/characters/:id/money', requireAuth('admin'), async (req, res) => {
+  const characters = await getCharacters();
+  const character = getCharacterById(characters, req.params.id);
+  const theme = character?.theme || (await getThemeForRequest(req));
+
+  if (!character || !character.filled) {
+    res.redirect('/admin');
+    return;
+  }
+
+  req.session.adminCharacterId = character.id;
+  res.send(layout('Деньги', renderMoneyScreen(character), theme));
 });
 
 app.get('/player', requireAuth('player'), async (req, res) => {
@@ -1837,9 +1906,11 @@ app.get('/player/money', requireAuth('player'), async (req, res) => {
 
 app.post('/player/game/save', requireAuth('player'), async (req, res) => {
   const characters = await getCharacters();
-  const character = characters.find(
-    (item) => item.id === req.session.characterId
-  );
+  const characterId =
+    req.session.role === 'admin'
+      ? req.session.adminCharacterId
+      : req.session.characterId;
+  const character = getCharacterById(characters, characterId);
 
   if (!character || !character.filled || character.status !== 'active') {
     res.status(403).json({ error: 'not allowed' });
